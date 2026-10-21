@@ -1,0 +1,77 @@
+@extends('layouts.master')
+@section('page_title', 'Loan Takaful')
+@section('content')
+
+                <div class="card">
+                    <div class="card-header">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+
+                            <span id="card_title">
+                                {{ __('Loan Takaful') }}
+                            </span>
+
+                             <div class="float-right">
+                                <a href="{{ route('loan-takafuls.create') }}" class="btn btn-primary btn-sm float-right"  data-placement="left">
+                                  {{ __('Create New') }}
+                                </a>
+                              </div>
+                        </div>
+                    </div>
+                    @if ($message = Session::get('success'))
+                        <div class="alert alert-success">
+                            <p>{{ $message }}</p>
+                        </div>
+                    @endif
+
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table datatable-button-html5-columns">
+                                <thead class="thead">
+                                    <tr>
+                                        <th>No</th>
+
+										<th>Account Number</th>
+										<th>Type</th>
+										<th>Start Date</th>
+										<th>End Date</th>
+										<th>Policy Number</th>
+										<th>Renewal Date</th>
+
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+
+                                    @foreach ($loanTakafuls as $loanTakaful)
+                                        <tr>
+                                            <td>{{ ++$i }}</td>
+
+											<td>{{ $loanTakaful->loan_id }}</td>
+											<td>{{ $loanTakaful->type==0 ? "Property" : "Life" }}</td>
+											<td>{{ $loanTakaful->start_date }}</td>
+											<td>{{ $loanTakaful->end_date }}</td>
+											<td>{{ $loanTakaful->policy_number }}</td>
+											<td>{{ $loanTakaful->renewal_date }}</td>
+
+                                            <td>
+                                                <div class="dropdown">
+                                                    <button class="btn btn btn-outline-primary dropdown-toggle" type="button" id="dropdownMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                                        Actions
+                                                    </button>
+                                                    <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                                                        <a class="dropdown-item" href="{{ route('loan-takafuls.show',$loanTakaful->id) }}"><i class="icon-eye"></i>Show</a>
+                                                        <a class="dropdown-item" href="{{ route('loan-takafuls.edit',$loanTakaful->id) }}"><i class="icon-pencil"></i>Edit</a>
+                                                        <a class="dropdown-item" href="{{ route('loan-takafuls.destroy',$loanTakaful->id) }}"><i class="icon-trash"></i>Delete</a>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+
+@endsection

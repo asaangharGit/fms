@@ -1,0 +1,68 @@
+# Dependencies
+/vendor/
+/node_modules/
+npm-debug.log
+yarn-error.log
+
+# Environment / secrets
+.env
+.env.backup
+.env.*.local
+storage/*.key
+/auth.json
+
+# Laravel build & cache
+/public/hot
+/public/storage
+/public_html/hot
+/public_html/storage
+/bootstrap/compiled.php
+.phpunit.result.cache
+
+# Logs (incl. cPanel PHP error_log files anywhere in the tree)
+*.log
+error_log
+
+# Database dumps & site backups (production data — never commit)
+/Backup/
+*.sql
+*.sql.gz
+*.zip
+*.tar
+*.tar.gz
+*.rar
+/ziqV6jjg
+
+# User-uploaded documents
+/uploads/*
+!/uploads/.gitkeep
+/public/uploads/
+
+# Legacy script with hard-coded DB credentials
+/app/Http/Controllers/delete/other_d/MyParent/MyController.php
+
+# Hosting (cPanel) generated files
+/.ftpquota
+/.user.ini
+/php.ini
+/.well-known/
+/cgi-bin/
+/vms/
+
+# IDE / OS
+/.idea/
+/.vscode/
+/.settings/
+/.project
+/.buildpath
+/nbproject/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local tooling
+Homestead.json
+Homestead.yaml
+/.vagrant
+/.claude/

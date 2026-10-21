@@ -1,0 +1,39 @@
+.exam-table {
+    border: 1px solid #000;
+    border-collapse: collapse;
+}
+
+.db_text{
+    font-weight:bold;
+}
+.modal-lg{max-width: 1200px;}
+.count-vms-rows{
+    padding: 5px;
+}
+
+.stat_table, .stat_table th, .stat_table td , .stat_table2  th, .stat_table2 td {
+    border: 1px solid black;
+    border-collapse: collapse;
+}
+.stat_table{
+    margin-left: auto;
+}
+.pendingBadge{
+    width: 50px;
+    background: #eee30d;
+    color:black
+}
+.successBadge{
+    width: 50px;
+}
+.label_bg{
+    background-color: cadetblue;
+}
+.label_bg >h3{
+    font-weight: bold;
+    margin:3px;
+    color:white;
+}
+.gap_rec{
+    height: 20px;
+}

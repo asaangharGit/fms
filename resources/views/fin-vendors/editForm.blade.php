@@ -1,0 +1,58 @@
+<div class="box box-info padding-1">
+    <div class="box-body">
+        <div class="card-body">
+            <input type="hidden" name="_token" value="{{ csrf_token() }}">
+            <div class="row">
+                <div class="col-lg-3 col-md-3 col-sm-3 col-xs-12">
+                    <label>Name</label>
+                    <input type="text" name="name" id="name" value="{{$vendor->name}}" required class="form-control" />
+                </div>
+                <div class="col-lg-3 col-md-3 col-sm-3 col-xs-12">
+                    <label>Ntn</label>
+                    <input type="text" name="ntn" id="ntn" value="{{$vendor->ntn}}" required class="form-control" />
+                </div>
+                <div class="col-lg-3 col-md-3 col-sm-3 col-xs-12">
+                    <label>Contact</label>
+                    <input type="text" name="contact" id="contact" value="{{$vendor->contact}}" required class="form-control" />
+                </div>
+                <div class="col-lg-3 col-md-3 col-sm-3 col-xs-12">
+                    <label>City</label>
+                    <select class="form-control" name="city_id" id="city_id" required>
+                        @foreach($cities as $val)
+                            <option @if($val->id == $vendor->city_id) selected @endif value="{{$val->id}}">{{$val->name}}</option>
+                        @endforeach
+
+                    </select>
+                </div>
+            </div>
+            <br>
+            <div class="row">
+{{--                <div class="col-lg-6 col-md-6 col-sm-6 col-xs-12">--}}
+{{--                    <label>Chart of Accounts</label>--}}
+{{--                    <select class="form-control" name="coa_id" id="coa_id" required>--}}
+{{--                        <option value="">Select</option>--}}
+{{--                        @foreach($accounts as $val)--}}
+{{--                            <option @if($val->id == $vendor->coa_id) selected @endif value="{{$val->id}}">{{$val->code.' - '.$val->title}}</option>--}}
+{{--                        @endforeach--}}
+
+{{--                    </select>--}}
+{{--                </div>--}}
+                <div class="col-lg-6 col-md-6 col-sm-6 col-xs-12">
+                    <label> Address </label>
+                    <textarea class="form-control" name="address" required>{{$vendor->address}}</textarea>
+                </div>
+            </div>
+            <br>
+            <div class="row">
+                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                    {{ Form::submit('Submit', ['class' => 'btn btn-sm btn-success']) }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+<script>
+    $("#coa_id").select2();
+    $("#city_id").select2();
+</script>
