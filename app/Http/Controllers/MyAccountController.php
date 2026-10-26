@@ -192,6 +192,14 @@ class MyAccountController extends Controller
 
     public function storeUsers(Request $request){
 
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'username' => 'nullable|string|max:100|unique:users,username',
+            'email' => 'required|email|max:100|unique:users,email',
+            'password' => 'required|string|min:8',
+            'role_id' => 'required|integer|exists:roles,id',
+        ]);
+
         $data['name'] = $request->name;
         $data['username'] = $request->username;
         $data['email'] = $request->email;
@@ -233,17 +241,29 @@ class MyAccountController extends Controller
     }
     public function updateUsers(Request $request){
 
+        $target = User::findOrFail($request->segment(2));
+
+        // Only a super admin may change a super admin account (prevents takeover).
+        if ($target->user_type == 'super_admin' && Auth::user()->user_type != 'super_admin') {
+            abort(403, 'You do not have permission to edit this user.');
+        }
+
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|max:100|unique:users,email,' . $target->id,
+            'password' => 'nullable|string|min:8',
+            'role_id' => 'required|integer|exists:roles,id',
+        ]);
+
         $data['name'] = $request->name;
         $data['email'] = $request->email;
         $data['role_id'] = $request->role_id;
-        if($request->password == ''){
-            $data['password'] =$request->old_password;
-        }else{
+        // Blank password = keep the current one.
+        if($request->password != ''){
             $data['password'] = Hash::make($request->password);
-
         }
 
-        User::where('id',$request->segment(2))->update($data);
+        User::where('id',$target->id)->update($data);
         return back()->with('flash_success', __('msg.update_ok'));
 
     }

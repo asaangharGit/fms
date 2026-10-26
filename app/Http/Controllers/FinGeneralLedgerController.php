@@ -18,7 +18,29 @@ use Illuminate\Support\Facades\DB;
  */
 class FinGeneralLedgerController extends Controller {
 
+    /** Voucher attachment types accepted on upload (documents, images, archives). */
+    const ATTACHMENT_EXTENSIONS = [
+        'pdf', 'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp',
+        'xls', 'xlsx', 'xlsm', 'csv', 'doc', 'docx', 'ppt', 'pptx', 'txt',
+        'msg', 'eml', 'zip', 'rar', '7z',
+    ];
+
     public $ar = [1 => 'BPv', 'BRV', 'CPV', 'CRV', 'JV'];
+
+    /**
+     * Rejects attachments whose extension is not whitelisted (e.g. .php,
+     * .html, .svg, .js, .exe) before anything is saved.
+     */
+    protected function validateAttachments(Request $request) {
+        $request->validate([
+            'filesupload.*' => ['file', 'max:20480', function ($attribute, $file, $fail) {
+                $extension = strtolower($file->getClientOriginalExtension());
+                if (! in_array($extension, self::ATTACHMENT_EXTENSIONS, true)) {
+                    $fail('Attachment type ".' . $extension . '" is not allowed.');
+                }
+            }],
+        ]);
+    }
     public $voucher_status = [1 => "Prepared", "Checked", "Approved", "Recieved"];
 
     public function filemanager() {
@@ -127,7 +149,8 @@ class FinGeneralLedgerController extends Controller {
     public function store(Request $request) {
 
         request()->validate(FinGeneralLedger::$rules);
-        extract($request->all());
+        $this->validateAttachments($request);
+        extract($request->all(), EXTR_SKIP); // never overwrite existing variables such as $request
 
         $file = $request->file('filesupload');
 
@@ -197,7 +220,8 @@ class FinGeneralLedgerController extends Controller {
     public function clone(Request $request) {
 
         request()->validate(FinGeneralLedger::$rules);
-        extract($request->all());
+        $this->validateAttachments($request);
+        extract($request->all(), EXTR_SKIP); // never overwrite existing variables such as $request
 
         $file = $request->file('filesupload');
 
@@ -336,7 +360,8 @@ class FinGeneralLedgerController extends Controller {
      */
     public function update(Request $request, FinGeneralLedger $finGeneralLedger) {
         request()->validate(FinGeneralLedger::$rules);
-        extract($request->all());
+        $this->validateAttachments($request);
+        extract($request->all(), EXTR_SKIP); // never overwrite existing variables such as $request
 
         $file = $request->file('filesupload');
 

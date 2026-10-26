@@ -47,8 +47,9 @@ Before the first deploy on PHP 8.2, select PHP 8.2 for the domain in cPanel → 
 ## Security
 
 - `.htaccess` serves only `public/`, `.well-known/` and `favicon.ico` from disk. Every other path goes to Laravel, so source code, `.env`, `.git`, backups, SQL dumps and logs cannot be downloaded. PHP runs only through `index.php`.
-- Voucher attachments (`/uploads/{voucher}/{file}`) are served by `UploadController` to logged-in users only.
-- In production `.env` must have `APP_ENV=production` and `APP_DEBUG=false`.
+- Voucher attachments (`/uploads/{voucher}/{file}`) are served by `UploadController` to logged-in users only. Uploads are limited to document, image and archive types (`FinGeneralLedgerController::ATTACHMENT_EXTENSIONS`).
+- Role permissions are enforced on the server by `CheckPagePermission`, using the same role data as the menu. Main/Sub menu management is for `super_admin` only. Only a super admin can edit a super admin account. GET links that delete data are refused when the request comes from another site.
+- In production `.env` must have `APP_ENV=production`, `APP_DEBUG=false` and `SESSION_SECURE_COOKIE=true`.
 - Keep backups (`Backup/`, `*.zip`) **outside** `public_html` where possible.
 - Laravel 8 is end-of-life and some framework advisories will never be patched for it. Plan an upgrade to a supported Laravel version.
 

@@ -13,7 +13,7 @@ Route::get( '/logout', function() {
 //Route::post('/savefeesdata', 'LoansController@FeesCollection');
 //Route::get('/generatePayslip', 'UserController@generatePayslip');
 
-Route::group(['middleware' => 'auth'], function () {
+Route::group(['middleware' => ['auth', 'page.permission']], function () {
 
     // Voucher attachments (login required; see UploadController)
     Route::get('/uploads/{voucher}/{file}', 'UploadController@show')

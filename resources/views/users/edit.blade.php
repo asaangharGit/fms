@@ -9,7 +9,6 @@
                     </div>
                     <div class="card-body">
                         <form method="POST" action="{{ url('updateUsers/'.$users[0]->id) }}"  role="form" enctype="multipart/form-data">
-                            <input type="hidden" name="password_old" value="{{$users[0]->password}}">
                             @csrf
 
                             <div class="form-group row">
@@ -29,7 +28,7 @@
                             <div class="form-group row">
                                 <label for="email" class="col-lg-3 col-form-label font-weight-semibold">Password </label>
                                 <div class="col-lg-9">
-                                    <input name="password" type="text" class="form-control">
+                                    <input name="password" type="password" class="form-control" autocomplete="new-password" placeholder="Leave blank to keep the current password">
                                 </div>
                             </div>
                             <div class="form-group row">

@@ -27,7 +27,7 @@
                     <div class="form-group row">
                         <label for="email" class="col-lg-3 col-form-label font-weight-semibold">Password </label>
                         <div class="col-lg-9">
-                            <input required id="password" name="password"  type="text" class="form-control" >
+                            <input required id="password" name="password"  type="password" class="form-control" minlength="8" autocomplete="new-password">
                         </div>
                     </div>
 
