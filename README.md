@@ -32,6 +32,8 @@ In production it runs on cPanel with the **repository root as the document root*
 
 ## Deploying to the server
 
+Full runbook (first deploy, cron, verification, rollback): [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md). Routine deploy:
+
 ```bash
 cd ~/public_html/fms.agfltech.com
 git pull
