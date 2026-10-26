@@ -1,11 +1,29 @@
+# ---------------------------------------------------------------------
+# Security
+# The document root is the project root, so everything that is not
+# meant for browsers must be blocked explicitly: source, .env, .git,
+# backups/DB dumps, logs and any PHP script other than index.php.
+# ---------------------------------------------------------------------
+Options -Indexes
+
+# Dotfiles, backups, dumps, logs and project/config files
+<FilesMatch "(^\.|\.(sql|gz|zip|7z|rar|tar|tgz|bak|backup|log|ini|lock|sh|bat|md|xml|yml|yaml|dist|psd)$|^(artisan|composer\.json|package\.json|webpack\.mix\.js|error_log|php_errorlog)$)">
+    Require all denied
+</FilesMatch>
+
+# PHP only runs through the front controller (blocks old scripts such as
+# Backup/backup.php, file-manager scripts and anything uploaded as .php)
+<FilesMatch "\.(php[0-9]?|phtml|phar|inc)$">
+    Require all denied
+</FilesMatch>
+<Files "index.php">
+    Require all granted
+</Files>
+
 <IfModule mod_rewrite.c>
     <IfModule mod_negotiation.c>
         Options -MultiViews -Indexes
     </IfModule>
-<Files .env>
-    Order allow,deny
-    Deny from all
-</Files>
     RewriteEngine On
     RewriteCond %{HTTPS} !on
     RewriteRule ^.*$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
@@ -20,8 +38,10 @@
     RewriteRule ^ %1 [L,R=301]
 
     # Handle Front Controller...
-    RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteCond %{REQUEST_FILENAME} !-f
+    # Only public assets and SSL validation files are served from disk;
+    # every other path (including folders like app/, Backup/, storage/,
+    # uploads/) goes to Laravel, which returns 404 or checks the login.
+    RewriteRule ^(public/|\.well-known/|favicon\.ico$|robots\.txt$|index\.php$) - [L]
     RewriteRule ^ index.php [L]
 </IfModule>
 

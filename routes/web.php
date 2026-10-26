@@ -15,6 +15,11 @@ Route::get( '/logout', function() {
 
 Route::group(['middleware' => 'auth'], function () {
 
+    // Voucher attachments (login required; see UploadController)
+    Route::get('/uploads/{voucher}/{file}', 'UploadController@show')
+        ->where(['voucher' => '[0-9]+', 'file' => '[^/]+'])
+        ->name('uploads.show');
+
     Route::get('/dashboardData', 'HomeController@dashboardData')->name('dashboardData');
     Route::get('/', 'HomeController@dashboard')->name('home');
     Route::get('/home', 'HomeController@dashboard')->name('home');

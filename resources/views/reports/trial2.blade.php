@@ -82,11 +82,11 @@
 
 //                              if($aaa < 0){
 //
-//                                  $retained_credit = abs($aaa);
+//                                  $retained_credit = abs($aaa ?? 0);
 //
 //                             }else{
 //
-//                                 $retained_debit = abs($aaa);
+//                                 $retained_debit = abs($aaa ?? 0);
 //                             }
                         @endphp
                         @foreach($assets as $val)
@@ -104,8 +104,8 @@
                                 <td><strong>Assets</strong></td>
                                 <td>{{$val->L5_Code }} </td>
                                 <td>{{$val->L5_Title }}  </td>
-                                <td class="text-right">{{number_format(abs($dedit_assets))}}</td>
-                                <td class="text-right">{{number_format(abs($credit_assets))}}</td>
+                                <td class="text-right">{{number_format(abs($dedit_assets ?? 0))}}</td>
+                                <td class="text-right">{{number_format(abs($credit_assets ?? 0))}}</td>
                                 <td class="text-right">
                                     @if(($val->debit-$val->credit) < 0)
                                         ({{number_format(abs($val->debit-$val->credit)) }})
@@ -143,8 +143,8 @@
                                 <td><strong>Liability</strong></td>
                                 <td>{{$val2->L5_Code }} </td>
                                 <td>{{$val2->L5_Title }}  </td>
-                                <td class="text-right">{{number_format(abs($dedit_liability))}}</td>
-                                <td class="text-right">{{number_format(abs($credit_liabality))}}</td>
+                                <td class="text-right">{{number_format(abs($dedit_liability ?? 0))}}</td>
+                                <td class="text-right">{{number_format(abs($credit_liabality ?? 0))}}</td>
                                 <td class="text-right">
                                     @if(($val2->debit-$val2->credit) < 0)
                                         ({{number_format(abs($val2->debit-$val2->credit)) }})
@@ -183,8 +183,8 @@
                                 <td><strong>Equity</strong></td>
                                 <td>{{$val3->L5_Code }} </td>
                                 <td>{{$val3->L5_Title }}  </td>
-                                <td class="text-right">{{number_format(abs($dedit_equity))}}</td>
-                                <td class="text-right">{{number_format(abs($credit_equity))}}</td>
+                                <td class="text-right">{{number_format(abs($dedit_equity ?? 0))}}</td>
+                                <td class="text-right">{{number_format(abs($credit_equity ?? 0))}}</td>
                                 <td class="text-right">
                                     @if(($val3->debit-$val3->credit) < 0)
                                         ({{number_format(abs($val3->debit-$val3->credit)) }})
@@ -205,11 +205,11 @@
                             <td>03-01-002-001-0001</td>
                             <td>-</td>
                             <td class="text-right">{{number_format($retained_debit)}}</td>
-                            <td class="text-right">{{number_format(abs($retained_credit))}}</td>
+                            <td class="text-right">{{number_format(abs($retained_credit ?? 0))}}</td>
                             <td class="text-right">
 
                                 @if(($ret) < 0)
-                                    ({{number_format(abs($ret))}})
+                                    ({{number_format(abs($ret ?? 0))}})
                                 @else
                                     {{number_format($ret)}}
 
@@ -237,8 +237,8 @@
                                 <td><strong>Expense</strong></td>
                                 <td>{{$val4->L5_Code }} </td>
                                 <td>{{$val4->L5_Title }}  </td>
-                                <td class="text-right">{{number_format(abs($dedit_expense))}}</td>
-                                <td class="text-right">{{number_format(abs($credit_expense))}}</td>
+                                <td class="text-right">{{number_format(abs($dedit_expense ?? 0))}}</td>
+                                <td class="text-right">{{number_format(abs($credit_expense ?? 0))}}</td>
                                 <td class="text-right">
                                     @if(($val4->debit-$val4->credit) < 0)
                                         ({{number_format(abs($val4->debit-$val4->credit)) }})
@@ -275,8 +275,8 @@
                                 <td><strong>Income</strong></td>
                                 <td>{{$val5->L5_Code }} </td>
                                 <td>{{$val5->L5_Title }}  </td>
-                                <td class="text-right">{{number_format(abs($dedit_income))}}</td>
-                                <td class="text-right">{{number_format(abs($credit_income))}}</td>
+                                <td class="text-right">{{number_format(abs($dedit_income ?? 0))}}</td>
+                                <td class="text-right">{{number_format(abs($credit_income ?? 0))}}</td>
                                 <td class="text-right">
                                     @if(($val5->debit-$val5->credit) < 0)
                                         ({{number_format(abs($val5->debit-$val5->credit)) }})
@@ -295,7 +295,7 @@
                          @php
 
                             $grand_debit = $retained_debit+$total_debit_assets+$total_debit_liabilitiy+$total_debit_equity+$total_debit_expense+$total_debit_income;
-                             $grand_credit = abs($retained_credit)+abs($total_credit_assets)+abs($total_credit_liabilitiy)+abs($total_credit_equity)+abs($total_credit_expense)+abs($total_credit_income);
+                             $grand_credit = abs($retained_credit ?? 0)+abs($total_credit_assets ?? 0)+abs($total_credit_liabilitiy ?? 0)+abs($total_credit_equity ?? 0)+abs($total_credit_expense ?? 0)+abs($total_credit_income ?? 0);
 
                      @endphp
                         </tbody>
@@ -304,8 +304,8 @@
                         <tr>
                             <th colspan="3" class="text-right"><strong>TOTAL</strong></th>
                             <th class="text-right"><strong>{{number_format($grand_debit)}}</strong></th>
-                            <th class="text-right"><strong>{{number_format(abs($grand_credit))}}</strong></th>
-                            <th class="text-right"><strong>{{number_format(abs(abs($grand_debit)-abs($grand_credit)))}}</strong></th>
+                            <th class="text-right"><strong>{{number_format(abs($grand_credit ?? 0))}}</strong></th>
+                            <th class="text-right"><strong>{{number_format(abs(abs($grand_debit ?? 0)-abs($grand_credit ?? 0)))}}</strong></th>
                         </tr>
                         </tfoot>
                     </table><br><br>
@@ -317,7 +317,7 @@
     </div>
 @php
 
-DB::Table('fin_info')->insert(['debit'=>$grand_debit,'credit'=>abs($grand_credit)]);
+DB::Table('fin_info')->insert(['debit'=>$grand_debit,'credit'=>abs($grand_credit ?? 0)]);
 
 @endphp
 @endsection

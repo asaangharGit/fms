@@ -41,10 +41,11 @@ return [
             'provider' => 'users',
         ],
 
+        // Passport instead of the legacy "token" driver (TokenGuard has an
+        // unpatched auth-bypass advisory on Laravel 8).
         'api' => [
-            'driver' => 'token',
+            'driver' => 'passport',
             'provider' => 'users',
-            'hash' => false,
         ],
     ],
 

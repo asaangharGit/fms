@@ -52,9 +52,10 @@
                             </td>
                             <td class="text-center">
                                 @php
-                                     if(\App\Helpers\Qs::installmentDateExpiry($val->upcoming_installment_payment) == 0 ):
-                                         echo \App\Helpers\Qs::installmentDateExpiry($val->upcoming_installment_date);
-                                     endif;
+                                     // The old check `installmentDateExpiry(...) == 0` compared an HTML
+                                     // string with 0, which was always true on PHP 7 and is always false
+                                     // on PHP 8. Keep the PHP 7 behaviour: always show the badge.
+                                     echo \App\Helpers\Qs::installmentDateExpiry($val->upcoming_installment_date);
                                 @endphp
                             </td>
                             <td class="text-center">
