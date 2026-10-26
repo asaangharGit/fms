@@ -3,7 +3,7 @@
 /node_modules/
 npm-debug.log
 yarn-error.log
-
+/old/
 # Environment / secrets
 .env
 .env.backup
@@ -22,15 +22,23 @@ storage/*.key
 # Logs (incl. cPanel PHP error_log files anywhere in the tree)
 *.log
 error_log
+php_errorlog
 
 # Database dumps & site backups (production data — never commit)
+# e.g. fms_03_06_26.zip, fms_15_10_2026.zip, cPanel's extension-less ziqV6jjg
 /Backup/
+/backups/
 *.sql
 *.sql.gz
 *.zip
 *.tar
 *.tar.gz
+*.tgz
+*.gz
 *.rar
+*.7z
+*.bak
+*.backup
 /ziqV6jjg
 
 # Postman exports that may contain real API keys (commit templates only)
@@ -45,13 +53,16 @@ error_log
 # Legacy script with hard-coded DB credentials
 /app/Http/Controllers/delete/other_d/MyParent/MyController.php
 
-# Hosting (cPanel) generated files
+# Hosting (cPanel) generated files — server-specific, must never be pulled over
 /.ftpquota
 /.user.ini
 /php.ini
 /.well-known/
 /cgi-bin/
 /vms/
+/.trash/
+/.htpasswds/
+/.cpanel/
 
 # IDE / OS
 /.idea/
