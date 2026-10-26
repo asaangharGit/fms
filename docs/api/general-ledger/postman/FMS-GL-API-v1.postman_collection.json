@@ -1,0 +1,1187 @@
+{
+    "info": {
+        "_postman_id": "6f1d6a7e-3c4b-4f0e-9a51-8f6d2f0c9b21",
+        "name": "FMS · General Ledger API v1 (Power BI)",
+        "description": "Read-only General Ledger API for Power BI and other BI tools.\n\n## Setup\n1. Import an environment from `docs/api/general-ledger/postman/` (Local or Production).\n2. Paste the API key into the environment variable **api_key** (type *secret*, **Current value** only — never Initial value, so it is not synced or exported).\n3. Select the environment and run **00 · Connectivity → Meta**.\n\n## Security\n- Auth: `Authorization: Bearer {{api_key}}` set once at collection level; requests inherit it.\n- The collection contains no secrets. A pre-request guard blocks requests when the key is missing or when a non-local baseUrl is not HTTPS.\n- Keys are issued and revoked on the server: `php artisan api-client:create|list|revoke`.\n\n## Conventions\n- Envelope: `{ data, meta, links }`; errors: `{ error: { status, code, message, details?, request_id } }`.\n- Lists use cursor pagination: follow `links.next` until it is `null`.\n- Default `status=posted` (Approved vouchers), same basis as the FMS trial balance.\n- Amounts are numbers with 2 decimals; balances are debit-positive (`debit - credit`).\n\nFull reference: `docs/api/general-ledger/README.md`.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "auth": {
+        "type": "bearer",
+        "bearer": [
+            {
+                "key": "token",
+                "value": "{{api_key}}",
+                "type": "string"
+            }
+        ]
+    },
+    "event": [
+        {
+            "listen": "prerequest",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    "// Guard rails: refuse to send requests that would leak the key or hit the wrong place.",
+                    "const base = pm.variables.get('baseUrl') || '';",
+                    "if (!base) { throw new Error('No baseUrl: select the \"FMS GL API - Local\" or \"FMS GL API - Production\" environment.'); }",
+                    "const isLocal = base.startsWith('http://127.0.0.1') || base.startsWith('http://localhost');",
+                    "if (!base.startsWith('https://') && !isLocal) { throw new Error('baseUrl must use HTTPS outside localhost.'); }",
+                    "const noAuth = pm.request.auth && pm.request.auth.type === 'noauth';",
+                    "if (!noAuth && !pm.variables.get('api_key')) { throw new Error('Set api_key (type: secret, Current value) in the active environment. Never store it in the collection.'); }"
+                ]
+            }
+        },
+        {
+            "listen": "test",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    "// Checks applied to every response.",
+                    "pm.test('Response is JSON', () => pm.expect(pm.response.headers.get('Content-Type') || '').to.include('application/json'));",
+                    "pm.test('Response time < 15s', () => pm.expect(pm.response.responseTime).to.be.below(15000));",
+                    "if (pm.response.headers.has('X-Request-Id')) {",
+                    "    pm.test('Financial data is not cacheable', () => pm.expect(pm.response.headers.get('Cache-Control')).to.include('no-store'));",
+                    "    pm.test('nosniff header present', () => pm.expect(pm.response.headers.get('X-Content-Type-Options')).to.eql('nosniff'));",
+                    "}",
+                    "if (pm.response.code >= 400) {",
+                    "    pm.test('Error envelope', () => pm.expect(pm.response.json().error).to.include.keys('status', 'code', 'message', 'request_id'));",
+                    "}"
+                ]
+            }
+        }
+    ],
+    "variable": [
+        {
+            "key": "account_id",
+            "value": "",
+            "description": "Set automatically by \"Accounts - posting accounts\"."
+        },
+        {
+            "key": "voucher_id",
+            "value": "",
+            "description": "Set automatically by \"Vouchers - posted, date range\"."
+        },
+        {
+            "key": "entries_next_cursor",
+            "value": "",
+            "description": "Set automatically by \"Entries - date range\"."
+        }
+    ],
+    "item": [
+        {
+            "name": "00 · Connectivity",
+            "description": "Validate the key and see data coverage / data-quality counters.",
+            "item": [
+                {
+                    "name": "Meta - key check, coverage, data quality",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                                    "const d = pm.response.json().data;",
+                                    "pm.test('Client and coverage returned', () => { pm.expect(d.client).to.have.property('name'); pm.expect(d.coverage).to.have.property('last_txn_date'); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [],
+                            "query": []
+                        },
+                        "description": "Returns the calling client, the posted status ids, the date range covered by posted vouchers and data-quality counters:\n- `unbalanced_vouchers` – posted vouchers whose lines do not net to zero\n- `entries_with_unknown_account` – posted lines whose account no longer exists\n- `lines_without_voucher_excluded` – orphan lines (always excluded)\n\nUse as the first query in Power BI to fail fast on a bad key."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "01 · Dimensions",
+            "description": "Lookup tables for the Power BI star schema.",
+            "item": [
+                {
+                    "name": "Accounts - posting accounts (L5)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                                    "const json = pm.response.json();",
+                                    "pm.test('Envelope: data[] + meta + links', () => {",
+                                    "    pm.expect(json.data).to.be.an('array');",
+                                    "    pm.expect(json.meta).to.include.keys('count', 'limit', 'has_more', 'next_cursor', 'generated_at');",
+                                    "    pm.expect(json.links).to.include.keys('self', 'next');",
+                                    "});",
+                                    "pm.test('Rows carry account_id', () => json.data.forEach(r => pm.expect(r).to.have.property('account_id')));",
+                                    "if (json.data.length) { pm.collectionVariables.set('account_id', json.data[0].account_id); }",
+                                    "pm.test('Hierarchy columns present', () => pm.expect(json.data[0]).to.include.keys('l1_code', 'l5_code', 'normal_balance'));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/accounts?level=L5&limit=5000",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "accounts"
+                            ],
+                            "query": [
+                                {
+                                    "key": "level",
+                                    "value": "L5",
+                                    "description": "L1-L5. Omit for every level.",
+                                    "disabled": false
+                                },
+                                {
+                                    "key": "class_code",
+                                    "value": "04",
+                                    "description": "01 Assets, 02 Liabilities, 03 Equity, 04 Expenses, 05 Income.",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "posting_only",
+                                    "value": "true",
+                                    "description": "true = only L5 posting accounts.",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "5000",
+                                    "description": "Page size, 1-5000 (default 1000).",
+                                    "disabled": false
+                                },
+                                {
+                                    "key": "cursor",
+                                    "value": "",
+                                    "description": "Opaque cursor from meta.next_cursor of the previous page. Easiest: follow links.next.",
+                                    "disabled": true
+                                }
+                            ]
+                        },
+                        "description": "Chart of accounts flattened to `l1_code … l5_title` columns (one row per account) with `class_name`, `normal_balance` and `hierarchy_complete`. Relationship: `accounts.account_id` 1-* `entries.account_id`."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Account - by id",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                                    "pm.test('Matches requested id', () => pm.expect(String(pm.response.json().data.account_id)).to.eql(String(pm.collectionVariables.get('account_id'))));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/accounts/{{account_id}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "accounts",
+                                "{{account_id}}"
+                            ],
+                            "query": []
+                        },
+                        "description": "Single account row (same shape as the list)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Voucher types",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/voucher-types",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "voucher-types"
+                            ],
+                            "query": []
+                        },
+                        "description": "BPV, BRV, CPV, CRV, JV. Relationship: `voucher_types.code` 1-* `entries.voucher_type`."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Voucher statuses",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/voucher-statuses",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "voucher-statuses"
+                            ],
+                            "query": []
+                        },
+                        "description": "Workflow statuses with `is_posted` flag."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Account classes",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/account-classes",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "account-classes"
+                            ],
+                            "query": []
+                        },
+                        "description": "L1 classes with normal balance side and financial statement."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "02 · Facts",
+            "description": "Vouchers (header grain) and entries (line grain). Entries is the main GL fact table.",
+            "item": [
+                {
+                    "name": "Vouchers - posted, date range",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                                    "const json = pm.response.json();",
+                                    "pm.test('Envelope: data[] + meta + links', () => {",
+                                    "    pm.expect(json.data).to.be.an('array');",
+                                    "    pm.expect(json.meta).to.include.keys('count', 'limit', 'has_more', 'next_cursor', 'generated_at');",
+                                    "    pm.expect(json.links).to.include.keys('self', 'next');",
+                                    "});",
+                                    "pm.test('Rows carry voucher_id', () => json.data.forEach(r => pm.expect(r).to.have.property('voucher_id')));",
+                                    "if (json.data.length) { pm.collectionVariables.set('voucher_id', json.data[0].voucher_id); }"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/vouchers?date_from={{date_from}}&date_to={{date_to}}&limit=1000",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "vouchers"
+                            ],
+                            "query": [
+                                {
+                                    "key": "date_from",
+                                    "value": "{{date_from}}",
+                                    "description": "Start date (YYYY-MM-DD), inclusive. Filters on voucher txn_date.",
+                                    "disabled": false
+                                },
+                                {
+                                    "key": "date_to",
+                                    "value": "{{date_to}}",
+                                    "description": "End date (YYYY-MM-DD), inclusive.",
+                                    "disabled": false
+                                },
+                                {
+                                    "key": "type",
+                                    "value": "JV,BPV",
+                                    "description": "Voucher type ids or codes: 1/BPV, 2/BRV, 3/CPV, 4/CRV, 5/JV (comma list).",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "status",
+                                    "value": "posted",
+                                    "description": "posted (default, = Approved) | all | comma list of status ids 1-4.",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "vendor_id",
+                                    "value": "1",
+                                    "description": "Only vouchers of this vendor.",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "updated_since",
+                                    "value": "2026-09-30T19:00:00Z",
+                                    "description": "ISO 8601 timestamp (UTC Z or URL-encoded offset, e.g. %2B05:00); only rows changed since then.",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "1000",
+                                    "description": "Page size, 1-5000 (default 1000).",
+                                    "disabled": false
+                                },
+                                {
+                                    "key": "cursor",
+                                    "value": "",
+                                    "description": "Opaque cursor from meta.next_cursor of the previous page. Easiest: follow links.next.",
+                                    "disabled": true
+                                }
+                            ]
+                        },
+                        "description": "One row per voucher with `voucher_no` (e.g. JV001), totals and `is_balanced`."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Voucher - by id with lines",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                                    "pm.test('Lines included', () => pm.expect(pm.response.json().data.lines).to.be.an('array'));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/vouchers/{{voucher_id}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "vouchers",
+                                "{{voucher_id}}"
+                            ],
+                            "query": []
+                        },
+                        "description": "Header + `lines[]` for drill-through. Returns any status; see `is_posted`."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Entries - date range",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                                    "const json = pm.response.json();",
+                                    "pm.test('Envelope: data[] + meta + links', () => {",
+                                    "    pm.expect(json.data).to.be.an('array');",
+                                    "    pm.expect(json.meta).to.include.keys('count', 'limit', 'has_more', 'next_cursor', 'generated_at');",
+                                    "    pm.expect(json.links).to.include.keys('self', 'next');",
+                                    "});",
+                                    "pm.test('Rows carry entry_id', () => json.data.forEach(r => pm.expect(r).to.have.property('entry_id')));",
+                                    "pm.collectionVariables.set('entries_next_cursor', json.meta.next_cursor || '');",
+                                    "pm.test('net_amount = debit - credit', () => json.data.forEach(r => pm.expect(Math.abs(r.net_amount - (r.debit - r.credit))).to.be.below(0.005)));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/entries?date_from={{date_from}}&date_to={{date_to}}&limit=5000",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "entries"
+                            ],
+                            "query": [
+                                {
+                                    "key": "date_from",
+                                    "value": "{{date_from}}",
+                                    "description": "Start date (YYYY-MM-DD), inclusive. Filters on voucher txn_date.",
+                                    "disabled": false
+                                },
+                                {
+                                    "key": "date_to",
+                                    "value": "{{date_to}}",
+                                    "description": "End date (YYYY-MM-DD), inclusive.",
+                                    "disabled": false
+                                },
+                                {
+                                    "key": "type",
+                                    "value": "JV,BPV",
+                                    "description": "Voucher type ids or codes: 1/BPV, 2/BRV, 3/CPV, 4/CRV, 5/JV (comma list).",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "status",
+                                    "value": "posted",
+                                    "description": "posted (default, = Approved) | all | comma list of status ids 1-4.",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "account_id",
+                                    "value": "{{account_id}}",
+                                    "description": "Exact posting account.",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "account_code",
+                                    "value": "04",
+                                    "description": "Account code prefix, e.g. 04 (all expenses) or 04-01-001.",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "voucher_id",
+                                    "value": "{{voucher_id}}",
+                                    "description": "Lines of one voucher.",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "vendor_id",
+                                    "value": "1",
+                                    "description": "Only vouchers of this vendor.",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "updated_since",
+                                    "value": "2026-09-30T19:00:00Z",
+                                    "description": "ISO 8601 timestamp (UTC Z or URL-encoded offset, e.g. %2B05:00); only rows changed since then.",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "5000",
+                                    "description": "Page size, 1-5000 (default 1000).",
+                                    "disabled": false
+                                },
+                                {
+                                    "key": "cursor",
+                                    "value": "",
+                                    "description": "Opaque cursor from meta.next_cursor of the previous page. Easiest: follow links.next.",
+                                    "disabled": true
+                                }
+                            ]
+                        },
+                        "description": "Journal lines with `debit`, `credit`, `net_amount` (= debit - credit). Paginate by following `links.next`."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Entries - next page (cursor)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                                    "const json = pm.response.json();",
+                                    "pm.test('Envelope: data[] + meta + links', () => {",
+                                    "    pm.expect(json.data).to.be.an('array');",
+                                    "    pm.expect(json.meta).to.include.keys('count', 'limit', 'has_more', 'next_cursor', 'generated_at');",
+                                    "    pm.expect(json.links).to.include.keys('self', 'next');",
+                                    "});",
+                                    "pm.test('Rows carry entry_id', () => json.data.forEach(r => pm.expect(r).to.have.property('entry_id')));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/entries?date_from={{date_from}}&date_to={{date_to}}&limit=5000&cursor={{entries_next_cursor}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "entries"
+                            ],
+                            "query": [
+                                {
+                                    "key": "date_from",
+                                    "value": "{{date_from}}",
+                                    "description": "Start date (YYYY-MM-DD), inclusive. Filters on voucher txn_date.",
+                                    "disabled": false
+                                },
+                                {
+                                    "key": "date_to",
+                                    "value": "{{date_to}}",
+                                    "description": "End date (YYYY-MM-DD), inclusive.",
+                                    "disabled": false
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "5000",
+                                    "description": "Page size, 1-5000 (default 1000).",
+                                    "disabled": false
+                                },
+                                {
+                                    "key": "cursor",
+                                    "value": "{{entries_next_cursor}}",
+                                    "description": "From the previous request.",
+                                    "disabled": false
+                                }
+                            ]
+                        },
+                        "description": "Run \"Entries - date range\" first. Must use the same filters as the page that produced the cursor."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Entries - incremental (updated_since)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                                    "const json = pm.response.json();",
+                                    "pm.test('Envelope: data[] + meta + links', () => {",
+                                    "    pm.expect(json.data).to.be.an('array');",
+                                    "    pm.expect(json.meta).to.include.keys('count', 'limit', 'has_more', 'next_cursor', 'generated_at');",
+                                    "    pm.expect(json.links).to.include.keys('self', 'next');",
+                                    "});",
+                                    "pm.test('Rows carry entry_id', () => json.data.forEach(r => pm.expect(r).to.have.property('entry_id')));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/entries?updated_since=2026-09-30T19:00:00Z&limit=5000",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "entries"
+                            ],
+                            "query": [
+                                {
+                                    "key": "updated_since",
+                                    "value": "2026-09-30T19:00:00Z",
+                                    "description": "ISO 8601 timestamp.",
+                                    "disabled": false
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "5000",
+                                    "description": "Page size, 1-5000 (default 1000).",
+                                    "disabled": false
+                                },
+                                {
+                                    "key": "cursor",
+                                    "value": "",
+                                    "description": "Opaque cursor from meta.next_cursor of the previous page. Easiest: follow links.next.",
+                                    "disabled": true
+                                }
+                            ]
+                        },
+                        "description": "Rows whose voucher or line changed since the timestamp. Note: editing a voucher re-creates its lines (new entry_id) and deletes are hard deletes, so for Power BI prefer incremental refresh by `date_from`/`date_to` partitions."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "03 · Reports",
+            "description": "Server-side aggregates over posted vouchers. Balances are debit-positive.",
+            "item": [
+                {
+                    "name": "Trial balance - L5",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                                    "const t = pm.response.json().meta.totals;",
+                                    "pm.test('Totals present', () => pm.expect(t).to.include.keys('period_debit', 'period_credit', 'closing_debit', 'closing_credit', 'is_balanced'));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/reports/trial-balance?date_from={{date_from}}&date_to={{date_to}}&level=L5",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "reports",
+                                "trial-balance"
+                            ],
+                            "query": [
+                                {
+                                    "key": "date_from",
+                                    "value": "{{date_from}}",
+                                    "description": "Start date (YYYY-MM-DD), inclusive. Filters on voucher txn_date.",
+                                    "disabled": false
+                                },
+                                {
+                                    "key": "date_to",
+                                    "value": "{{date_to}}",
+                                    "description": "End date (YYYY-MM-DD), inclusive.",
+                                    "disabled": false
+                                },
+                                {
+                                    "key": "level",
+                                    "value": "L5",
+                                    "description": "Roll-up level L1-L5.",
+                                    "disabled": false
+                                },
+                                {
+                                    "key": "include_zero",
+                                    "value": "false",
+                                    "description": "true = include accounts without activity.",
+                                    "disabled": true
+                                }
+                            ]
+                        },
+                        "description": "Opening balance (before date_from), period debit/credit and closing balance per account. `meta.totals.is_balanced` flags ledger imbalance; `rollup_complete=false` marks accounts whose parent chain is broken."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Trial balance - L1 summary",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/reports/trial-balance?date_from={{date_from}}&date_to={{date_to}}&level=L1",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "reports",
+                                "trial-balance"
+                            ],
+                            "query": [
+                                {
+                                    "key": "date_from",
+                                    "value": "{{date_from}}",
+                                    "description": "Start date (YYYY-MM-DD), inclusive. Filters on voucher txn_date.",
+                                    "disabled": false
+                                },
+                                {
+                                    "key": "date_to",
+                                    "value": "{{date_to}}",
+                                    "description": "End date (YYYY-MM-DD), inclusive.",
+                                    "disabled": false
+                                },
+                                {
+                                    "key": "level",
+                                    "value": "L1",
+                                    "description": "Roll-up level.",
+                                    "disabled": false
+                                }
+                            ]
+                        },
+                        "description": "Assets / Liabilities / Equity / Expenses / Income."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Monthly balances",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/reports/monthly-balances?date_from={{date_from}}&date_to={{date_to}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "reports",
+                                "monthly-balances"
+                            ],
+                            "query": [
+                                {
+                                    "key": "date_from",
+                                    "value": "{{date_from}}",
+                                    "description": "Start date (YYYY-MM-DD), inclusive. Filters on voucher txn_date.",
+                                    "disabled": false
+                                },
+                                {
+                                    "key": "date_to",
+                                    "value": "{{date_to}}",
+                                    "description": "End date (YYYY-MM-DD), inclusive.",
+                                    "disabled": false
+                                },
+                                {
+                                    "key": "account_code",
+                                    "value": "04",
+                                    "description": "Account code prefix.",
+                                    "disabled": true
+                                }
+                            ]
+                        },
+                        "description": "Debit/credit per account per month (`period` = YYYY-MM). Compact alternative to entries for trend visuals."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Account ledger (statement)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                                    "const d = pm.response.json().data;",
+                                    "pm.test('Closing = last running balance', () => { if (d.lines.length) pm.expect(d.closing_balance).to.eql(d.lines[d.lines.length - 1].running_balance); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/accounts/{{account_id}}/ledger?date_from={{date_from}}&date_to={{date_to}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "accounts",
+                                "{{account_id}}",
+                                "ledger"
+                            ],
+                            "query": [
+                                {
+                                    "key": "date_from",
+                                    "value": "{{date_from}}",
+                                    "description": "Start date (YYYY-MM-DD), inclusive. Filters on voucher txn_date.",
+                                    "disabled": false
+                                },
+                                {
+                                    "key": "date_to",
+                                    "value": "{{date_to}}",
+                                    "description": "End date (YYYY-MM-DD), inclusive.",
+                                    "disabled": false
+                                }
+                            ]
+                        },
+                        "description": "Opening balance, lines with `running_balance`, closing balance. For an L1-L4 account all descendant accounts are included."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "04 · Security checks",
+            "description": "Negative tests: run after deployment to confirm the API rejects bad requests.",
+            "item": [
+                {
+                    "name": "No API key → 401",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status is 401', () => pm.response.to.have.status(401));",
+                                    "pm.test('Error code is unauthenticated', () => pm.expect(pm.response.json().error.code).to.eql('unauthenticated'));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [],
+                            "query": []
+                        },
+                        "description": "Request without credentials.",
+                        "auth": {
+                            "type": "noauth"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Invalid API key → 401",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status is 401', () => pm.response.to.have.status(401));",
+                                    "pm.test('Error code is unauthenticated', () => pm.expect(pm.response.json().error.code).to.eql('unauthenticated'));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [],
+                            "query": []
+                        },
+                        "description": "Same generic response for unknown, revoked or expired keys.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "fms_invalid_000000",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Write attempt → 405",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status is 405', () => pm.response.to.have.status(405));",
+                                    "pm.test('Error code is method_not_allowed', () => pm.expect(pm.response.json().error.code).to.eql('method_not_allowed'));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/entries",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "entries"
+                            ],
+                            "query": []
+                        },
+                        "description": "The API is read-only."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Unknown parameter → 422",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status is 422', () => pm.response.to.have.status(422));",
+                                    "pm.test('Error code is validation_failed', () => pm.expect(pm.response.json().error.code).to.eql('validation_failed'));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/entries?dateFrom=2026-01-01",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "entries"
+                            ],
+                            "query": [
+                                {
+                                    "key": "dateFrom",
+                                    "value": "2026-01-01",
+                                    "description": "Typo on purpose (should be date_from).",
+                                    "disabled": false
+                                }
+                            ]
+                        },
+                        "description": "Unknown parameters are rejected instead of being ignored."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Tampered cursor → 422",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status is 422', () => pm.response.to.have.status(422));",
+                                    "pm.test('Error code is validation_failed', () => pm.expect(pm.response.json().error.code).to.eql('validation_failed'));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/entries?cursor=not-a-cursor",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "entries"
+                            ],
+                            "query": [
+                                {
+                                    "key": "cursor",
+                                    "value": "not-a-cursor",
+                                    "description": "Invalid on purpose.",
+                                    "disabled": false
+                                }
+                            ]
+                        },
+                        "description": "Cursors are validated."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Report without dates → 422",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status is 422', () => pm.response.to.have.status(422));",
+                                    "pm.test('Error code is validation_failed', () => pm.expect(pm.response.json().error.code).to.eql('validation_failed'));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/reports/trial-balance",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "reports",
+                                "trial-balance"
+                            ],
+                            "query": []
+                        },
+                        "description": "date_from and date_to are required for reports."
+                    },
+                    "response": []
+                }
+            ]
+        }
+    ]
+}

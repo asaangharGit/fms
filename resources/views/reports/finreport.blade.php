@@ -76,10 +76,11 @@
                         <th width="5%">Sr.#</th>
                         <th id="sortt" width="20%">Code</th>
                         <th width="20%">Title</th>
-                        <th width="40%">Descriptions</th>
+                        <th width="30%">Descriptions</th>
                         <th width="15%">Transaction</th>
                         <th  style="text-align:right" width="10%">Debit</th>
                         <th style="text-align:right" width="10%">Credit</th>
+                        <th style="text-align:right" width="12%">Balance</th>
                         <th>-</th>
 
                     </tr>
@@ -94,6 +95,10 @@
                         $credit_cal = 0;
                         $debit_cal = 0;
                         $final_cal = 0;
+                        // Running balance shown like the Closing Balance amount (no Dr/Cr).
+                        $formatBalance = function ($balance) {
+                            return number_format(abs($balance));
+                        };
                         ?>
                     @foreach($dd as $val)
 
@@ -109,7 +114,10 @@
                                 ->where("voucher_status", 3)
                                 ->select(DB::raw(""
                                     . "fca.code, fca.title, fca.parent_code,gl.details as detail, gld.detail as details, gld.debit,gld.credit, gl.txn_date, gl.id, gl.txn_type, gl.txn_series"))
-                                ->orderBy('fca.parent_code');
+                                // Chronological order so the running balance is meaningful.
+                                ->orderBy('gl.txn_date')
+                                ->orderBy('gl.id')
+                                ->orderBy('gld.id');
                             
                             $opening_bal = DB::table("fin_general_ledgers as gl")
                                 ->join("fin_general_ledger_details as gld", "gld.fin_gen_id", "=", "gl.id")
@@ -118,6 +126,7 @@
                                 ->where("voucher_status", 3)
                                 ->select(DB::raw("SUM(gld.debit) as debit,SUM(gld.credit) as credit"))->get()->toArray();
                             $opening_balance  = $opening_bal[0]->debit-$opening_bal[0]->credit;
+                            $running_balance = (float) $opening_balance;
 
                            
                             if($opening_balance < 0):
@@ -128,13 +137,14 @@
                             ?>
                         <?php if($ReportData->count() > 0): ?>
                             <tr>
-                                <td colspan="8"><strong>{{$val->code}} - {{$val->title}}</strong></td>
+                                <td colspan="9"><strong>{{$val->code}} - {{$val->title}}</strong></td>
                             </tr>
                             <tr class="border-blue" style="border-color: #97D35D;border-width: 2px 0px 2px 0px;background-color:gold;border-style: double;">
 
                                 <td colspan="5" class="text-right"><b>Opening Balance</b></td>
                                 <td class="text-right"><b>{{number_format($opening_debit)}}</b></td>
                                 <td class="text-right"><b>{{number_format($opening_credit)}}</b></td>
+                                <td class="text-right" style="white-space:nowrap"><b>{{ $formatBalance($running_balance) }}</b></td>
                                 <td></td>
                             </tr>
 
@@ -148,6 +158,8 @@
                                 <td>{{ date("M j, Y", strtotime($Row->txn_date)) }}</td>
                                 <td align="right">{{ number_format($Row->debit) }}</td>
                                 <td align="right">{{ number_format($Row->credit) }}</td>
+                                <?php $running_balance += $Row->debit - $Row->credit; ?>
+                                <td align="right" style="white-space:nowrap">{{ $formatBalance($running_balance) }}</td>
                                 <td><a target="_blank" class="dropdown-item" href="{{ route('fin-general-ledgers.show2', $Row->id) }}"><i class="icon-eye"></i>View</a>
                                 </td>
 
@@ -160,6 +172,7 @@
                                 <td colspan="5" class="text-right"></td>
                                 <td class="text-right"><b>{{ number_format($GrandDebit) }}</b></td>
                                 <td class="text-right"><b>{{ number_format($GrandCredit) }}</b></td>
+                                <td></td>
                                 <td>-</td>
                             </tr>
                             <tr class="border-blue" style="background-color:lightpink;border-color: #97D35D;border-width: 2px 0px 2px 0px;border-style: double;">
@@ -183,6 +196,7 @@
                                 <td colspan="5" class="text-right"><b>Closing Balance</b></td>
                                 <td class="text-right"><b>{{ number_format($debit_final) }}</b></td>
                                 <td class="text-right"><b>{{ number_format(abs($credit_final)) }}</b></td>
+                                <td class="text-right" style="white-space:nowrap"><b>{{ $formatBalance($running_balance) }}</b></td>
                                 <td>-</td>
                             </tr>
                        <?php endif; $credit_final=0;$debit_final=0;  $opening_debit=0;
