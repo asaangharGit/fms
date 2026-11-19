@@ -180,10 +180,13 @@
     <hr>
     <div class="row">
 
-        <div class="col-md-10 text-right">
+        <div class="col-md-8 text-right">
             <p id="vms-error" style="color:red;"></p>
         </div>
-        <div class="col-md-2 text-right">
+        <div class="col-md-4 text-right">
+            <button type="button" class="btn btn-outline-success mr-2" data-toggle="modal" data-target="#duplicateVoucherModal" title="Create copies of this voucher">
+                <i class="icon-copy3 mr-1"></i> Duplicate
+            </button>
             <button type="submit" class="btn btn-success submitbtn">Update</button>
         </div>
     </div>

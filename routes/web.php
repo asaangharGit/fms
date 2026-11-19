@@ -147,6 +147,7 @@ Route::group(['middleware' => ['auth', 'page.permission']], function () {
             Route::patch('update/{ttr}', 'FinGeneralLedgerController@update')->name('fin-general-ledgers.update');
             Route::post('store', 'FinGeneralLedgerController@store')->name('fin-general-ledgers.store');
             Route::post('clone', 'FinGeneralLedgerController@clone')->name('fin-general-ledgers.clone');
+            Route::post('duplicate/{ttr}', 'FinGeneralLedgerController@duplicate')->name('fin-general-ledgers.duplicate');
             Route::post('/submitvouchers', 'FinGeneralLedgerController@submitvouchers');
             Route::post('/bulkApproveLedger', 'VoucherController@bulkApproveLedger')->name('fin-general-ledgers.bulkApprove');
             Route::get('/addMoreRowVoucher', 'VoucherController@addMoreRowVoucher')->name('fin-general-ledgers.addMoreRowVoucher');

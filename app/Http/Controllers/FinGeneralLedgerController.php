@@ -25,6 +25,9 @@ class FinGeneralLedgerController extends Controller {
         'msg', 'eml', 'zip', 'rar', '7z',
     ];
 
+    /** Upper limit of copies created by one "Duplicate" request. */
+    const MAX_DUPLICATES = 50;
+
     public $ar = [1 => 'BPv', 'BRV', 'CPV', 'CRV', 'JV'];
 
     /**
@@ -342,8 +345,10 @@ class FinGeneralLedgerController extends Controller {
         $chartOfAccounts = FinChartOfAccount::where("level", "L5")->orderBy("code")->get();
         $Reference = "BPV001";
         $banks = FinCheckbook::where('status',1)->get();
+        $nextSeries = (int) FinGeneralLedger::where('txn_type', $finGeneralLedger->txn_type)->max('txn_series') + 1;
+        $maxDuplicates = self::MAX_DUPLICATES;
 
-        return view('fin-general-ledger.edit', compact('finGeneralLedger','banks', 'chartOfAccounts', 'Reference','vendors'));
+        return view('fin-general-ledger.edit', compact('finGeneralLedger','banks', 'chartOfAccounts', 'Reference','vendors', 'nextSeries', 'maxDuplicates'));
 
 //
 //        $finGeneralLedger = FinGeneralLedger::find($id);
@@ -415,6 +420,86 @@ class FinGeneralLedgerController extends Controller {
 
         return redirect()->route('fin-general-ledgers.vouchers')
                         ->with('flash_success', 'FinGeneralLedger updated successfully');
+    }
+
+    /**
+     * Creates copies of a saved voucher (header + all lines).
+     *
+     * Each copy gets the next number of its voucher type and starts as
+     * "Prepared", so it goes through the normal check/approve workflow.
+     * Cheque, invoice and attachments are not copied: they belong to the
+     * original transaction and copying them would pay the same cheque or
+     * invoice twice.
+     */
+    public function duplicate(Request $request, $id) {
+        $original = FinGeneralLedger::with('ledgerdetails')->findOrFail($id);
+        $source = self::getReference($original->txn_type, $original->txn_series, 3);
+
+        $data = $request->validateWithBag('duplicate', [
+            'copies' => 'required|integer|min:1|max:' . self::MAX_DUPLICATES,
+            'date_mode' => 'required|in:original,custom',
+            'txn_date' => 'required_if:date_mode,custom|nullable|date_format:Y-m-d',
+        ], [
+            'copies.max' => 'You can create at most ' . self::MAX_DUPLICATES . ' copies at a time.',
+            'txn_date.required_if' => 'Please choose the transaction date for the copies.',
+        ]);
+
+        if ($original->ledgerdetails->isEmpty()) {
+            return back()->with('flash_danger', $source . ' has no entries to copy.');
+        }
+
+        $txnDate = $data['date_mode'] === 'custom' ? $data['txn_date'] : $original->txn_date;
+        $userId = \Illuminate\Support\Facades\Auth::id();
+        $totalDebit = $original->ledgerdetails->sum('debit');
+        $totalCredit = $original->ledgerdetails->sum('credit');
+
+        $references = DB::transaction(function () use ($original, $data, $txnDate, $userId, $totalDebit, $totalCredit) {
+            // Lock the series of this voucher type so parallel saves cannot reuse a number.
+            $series = (int) FinGeneralLedger::where('txn_type', $original->txn_type)->lockForUpdate()->max('txn_series');
+            $now = now();
+            $references = [];
+
+            for ($i = 0; $i < $data['copies']; $i++) {
+                $series++;
+
+                $copy = FinGeneralLedger::create([
+                    'user_id' => $userId,
+                    'details' => $original->details,
+                    'debit' => $totalDebit,
+                    'credit' => $totalCredit,
+                    'txn_date' => $txnDate,
+                    'txn_type' => $original->txn_type,
+                    'txn_series' => $series,
+                    'office_id' => $original->office_id,
+                    'vendor_id' => $original->vendor_id,
+                    'loan_id' => $original->loan_id,
+                    'voucher_status' => 1,
+                ]);
+
+                FinGeneralLedgerDetail::insert($original->ledgerdetails->map(function ($line) use ($copy, $now) {
+                    return [
+                        'fin_gen_id' => $copy->id,
+                        'coa_id' => $line->coa_id,
+                        'detail' => $line->detail,
+                        'debit' => $line->debit,
+                        'credit' => $line->credit,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
+                })->all());
+
+                $references[] = self::getReference($copy->txn_type, $copy->txn_series, 3);
+            }
+
+            return $references;
+        });
+
+        $created = count($references) === 1
+            ? $references[0]
+            : count($references) . ' vouchers (' . $references[0] . ' to ' . end($references) . ')';
+
+        return redirect()->route('fin-general-ledgers.vouchers')
+                        ->with('flash_success', $source . ' duplicated: ' . $created . ' created as Prepared.');
     }
 
     /**

@@ -2,11 +2,9 @@
 @section('page_title', 'Edit Voucher')
 @section('content')
 
-@section('content')
-
 <div class="card card-default">
     <div class="card-body">
-        <form method="POST" action="{{ route('fin-general-ledgers.update', $finGeneralLedger->id) }}"  role="form" enctype="multipart/form-data">
+        <form method="POST" action="{{ route('fin-general-ledgers.update', $finGeneralLedger->id) }}" id="editVoucherForm" role="form" enctype="multipart/form-data">
             {{ method_field('PATCH') }}
             @csrf
 
@@ -15,4 +13,6 @@
         </form>
     </div>
 </div>
+
+@include('fin-general-ledger.duplicateModal')
 @endsection
